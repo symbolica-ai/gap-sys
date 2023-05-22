@@ -19,6 +19,14 @@ impl fmt::Display for GapElement {
     }
 }
 
+impl From<GapElement> for usize {
+    fn from(val: GapElement) -> Self {
+        // Convert string to usize
+        let string = val.to_string();
+        string.parse::<usize>().unwrap()
+    }
+}
+
 impl Gap {
     pub fn init() -> Self {
         let arg1 = CString::new("gap").unwrap();
@@ -85,5 +93,14 @@ mod tests {
         let gap = Gap::init();
         let gap_element = gap.eval("Group((1,2,3),(1,2));").unwrap();
         assert_eq!(gap_element.to_string(), "Group([ (1,2,3), (1,2) ])");
+    }
+
+    #[test]
+    fn test_direct_product() {
+        let gap = Gap::init();
+        gap.eval("a:=DirectProduct(SymmetricGroup(7), SymmetricGroup(7));")
+            .unwrap();
+        let order: usize = gap.eval("Order(a);").unwrap().into();
+        assert_eq!(order, 25401600);
     }
 }
