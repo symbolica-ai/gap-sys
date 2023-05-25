@@ -1,6 +1,7 @@
 use std::ffi::{c_int, CStr, CString};
 use std::fmt;
 use std::ptr;
+use anyhow::Result;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -63,7 +64,7 @@ impl Gap {
         Self {}
     }
 
-    pub fn eval(&self, cmd: &str) -> Result<GapElement, &'static str> {
+    pub fn eval(&self, cmd: &str) -> Result<GapElement> {
         unsafe { SYSGAP_Enter() };
 
         let c_cmd = CString::new(cmd).unwrap();
@@ -79,7 +80,7 @@ impl Gap {
             Ok(GapElement { obj })
         } else {
             unsafe { SYSGAP_Leave() };
-            Err("error")
+            Err(anyhow::anyhow!("Error evaluating command"))
         }
     }
 }

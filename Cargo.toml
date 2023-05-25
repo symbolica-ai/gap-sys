@@ -9,3 +9,4 @@ edition = "2021"
 bindgen = { version = "0.65.1", features = ["experimental"] }
 
 [dependencies]
+anyhow = "1.0.71"

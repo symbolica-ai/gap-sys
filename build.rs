@@ -10,6 +10,15 @@ fn main() {
     println!("cargo:rustc-link-lib=gap");
     println!("cargo:rerun-if-changed=wrapper.h");
 
+    println!(
+        "cargo:warning={}",
+        std::env::temp_dir()
+            .join("bindgen")
+            .join("extern.c")
+            .to_str()
+            .unwrap()
+    );
+
     let input_path = std::env::current_dir().unwrap().join("wrapper.h");
 
     let bindings = bindgen::Builder::default()
@@ -17,7 +26,8 @@ fn main() {
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .wrap_static_fns(true)
         .generate()
-        .expect("Unable to generate bindings");
+        .unwrap();
+        //.expect("Unable to generate bindings");
 
     let output_path = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let obj_path = output_path.join("extern.o");
