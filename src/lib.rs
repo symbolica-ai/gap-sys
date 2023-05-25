@@ -1,11 +1,24 @@
-use std::ffi::{c_int, CStr, CString};
-use std::fmt;
-use std::ptr;
-use anyhow::Result;
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(improper_ctypes)]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
+use anyhow::Result;
+use std::ffi::{c_int, CStr, CString};
+use std::fmt;
+use std::ptr;
+
 pub struct Gap;
+
+pub struct GapGuard;
+
+impl Drop for GapGuard {
+    fn drop(&mut self) {
+        unsafe { SYSGAP_Leave(); }
+    }
+}
 
 pub struct GapElement {
     obj: Obj,
@@ -13,16 +26,15 @@ pub struct GapElement {
 
 impl fmt::Display for GapElement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        unsafe { SYSGAP_Enter() };
-        let cstr = unsafe { CStr::from_ptr(GAP_CSTR_STRING(self.obj)) };
-        unsafe { SYSGAP_Leave() };
-        write!(f, "{}", cstr.to_string_lossy())
+        unsafe {
+            let cstr = CStr::from_ptr(GAP_CSTR_STRING(self.obj));
+            write!(f, "{}", cstr.to_string_lossy())
+        }
     }
 }
 
 impl From<GapElement> for usize {
     fn from(val: GapElement) -> Self {
-        // Convert string to usize
         let string = val.to_string();
         string.parse::<usize>().unwrap()
     }
@@ -65,22 +77,23 @@ impl Gap {
     }
 
     pub fn eval(&self, cmd: &str) -> Result<GapElement> {
-        unsafe { SYSGAP_Enter() };
-
         let c_cmd = CString::new(cmd).unwrap();
-        let obj = unsafe { GAP_EvalString(c_cmd.into_raw() as *const Char) };
 
-        let len = unsafe { GAP_LenList(obj) };
-        let obj = unsafe { GAP_ElmList(obj, 1) };
-        let success = unsafe { GAP_ElmList(obj, 1) };
+        let _guard = GapGuard;
 
-        if success == unsafe { GAP_True } {
-            let obj = unsafe { GAP_ElmList(obj, 5) };
-            unsafe { SYSGAP_Leave() };
-            Ok(GapElement { obj })
-        } else {
-            unsafe { SYSGAP_Leave() };
-            Err(anyhow::anyhow!("Error evaluating command"))
+        unsafe {
+            SYSGAP_Enter();
+
+            let obj = GAP_EvalString(c_cmd.into_raw() as *const Char);
+            let obj = GAP_ElmList(obj, 1);
+            let success = GAP_ElmList(obj, 1);
+
+            if success == GAP_True {
+                let obj = GAP_ElmList(obj, 5);
+                Ok(GapElement { obj })
+            } else {
+                Err(anyhow::anyhow!("Error evaluating command"))
+            }
         }
     }
 }
