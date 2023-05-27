@@ -9,6 +9,7 @@ use anyhow::Result;
 use std::ffi::{c_int, CStr, CString};
 use std::fmt;
 use std::ptr;
+use std::sync::{Arc, Mutex, Once};
 
 pub struct Gap;
 
@@ -16,7 +17,9 @@ pub struct GapGuard;
 
 impl Drop for GapGuard {
     fn drop(&mut self) {
-        unsafe { SYSGAP_Leave(); }
+        unsafe {
+            SYSGAP_Leave();
+        }
     }
 }
 
@@ -41,39 +44,46 @@ impl From<GapElement> for usize {
 }
 
 impl Gap {
-    pub fn init() -> Self {
-        let arg1 = CString::new("gap").unwrap();
-        let arg2 = CString::new("-l").unwrap();
-        let arg3 = CString::new("/usr/share/gap").unwrap();
-        let arg4 = CString::new("-q").unwrap();
-        let arg5 = CString::new("-E").unwrap();
-        let arg6 = CString::new("--nointeract").unwrap();
-        let arg7 = CString::new("-x").unwrap();
-        let arg8 = CString::new("4096").unwrap();
-
-        let mut c_args = vec![
-            arg1.into_raw(),
-            arg2.into_raw(),
-            arg3.into_raw(),
-            arg4.into_raw(),
-            arg5.into_raw(),
-            arg6.into_raw(),
-            arg7.into_raw(),
-            arg8.into_raw(),
-            ptr::null_mut(),
-        ];
+    pub fn init() -> &'static Gap {
+        // Use a static ONCE and OPTIONAL to hold the singleton
+        static mut OPTIONAL: Option<Gap> = None;
+        static ONCE: Once = Once::new();
 
         unsafe {
-            GAP_Initialize(
-                c_args.len() as c_int - 1,
-                c_args.as_mut_ptr(),
-                None,
-                None,
-                1,
-            );
-        }
+            ONCE.call_once(|| {
+                let arg1 = CString::new("gap").unwrap();
+                let arg2 = CString::new("-l").unwrap();
+                let arg3 = CString::new("/usr/share/gap").unwrap();
+                let arg4 = CString::new("-q").unwrap();
+                let arg5 = CString::new("-E").unwrap();
+                let arg6 = CString::new("--nointeract").unwrap();
+                let arg7 = CString::new("-x").unwrap();
+                let arg8 = CString::new("4096").unwrap();
 
-        Self {}
+                let mut c_args = vec![
+                    arg1.into_raw(),
+                    arg2.into_raw(),
+                    arg3.into_raw(),
+                    arg4.into_raw(),
+                    arg5.into_raw(),
+                    arg6.into_raw(),
+                    arg7.into_raw(),
+                    arg8.into_raw(),
+                    ptr::null_mut(),
+                ];
+
+                GAP_Initialize(
+                    c_args.len() as c_int - 1,
+                    c_args.as_mut_ptr(),
+                    None,
+                    None,
+                    1,
+                );
+
+                OPTIONAL = Some(Gap {});
+            });
+            OPTIONAL.as_ref().unwrap()
+        }
     }
 
     pub fn eval(&self, cmd: &str) -> Result<GapElement> {
