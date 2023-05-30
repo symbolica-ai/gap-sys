@@ -53,7 +53,7 @@ impl Gap {
             ONCE.call_once(|| {
                 let arg1 = CString::new("gap").unwrap();
                 let arg2 = CString::new("-l").unwrap();
-                let arg3 = CString::new("/usr/share/gap").unwrap();
+                let arg3 = CString::new("/usr/local/gap/share/gap").unwrap();
                 let arg4 = CString::new("-q").unwrap();
                 let arg5 = CString::new("-E").unwrap();
                 let arg6 = CString::new("--nointeract").unwrap();
