@@ -1,7 +1,6 @@
 extern crate bindgen;
 
 use std::path::PathBuf;
-use std::process::Command;
 
 fn main() {
     // Tell cargo to look for shared libraries in the specified directory
@@ -18,38 +17,12 @@ fn main() {
         .expect("Unable to generate bindings");
 
     let output_path = PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    let obj_path = output_path.join("extern.o");
-    let lib_path = output_path.join("libextern.a");
 
-    let clang_output = std::process::Command::new("clang")
-        .arg("-O")
-        .arg("-c")
-        .arg("-o")
-        .arg(&obj_path)
-        .arg(std::env::temp_dir().join("bindgen").join("extern.c"))
-        .output()
-        .unwrap();
-
-    if !clang_output.status.success() {
-        panic!(
-            "Could not compile object file:\n{}",
-            String::from_utf8_lossy(&clang_output.stderr)
-        );
-    }
-
-    let lib_output = Command::new("ar")
-        .arg("rcs")
-        .arg(&lib_path)
-        .arg(&obj_path)
-        .output()
-        .unwrap();
-
-    if !lib_output.status.success() {
-        panic!(
-            "Could not emit library file:\n{}",
-            String::from_utf8_lossy(&lib_output.stderr)
-        );
-    }
+    cc::Build::new()
+        .file(std::env::temp_dir().join("bindgen").join("extern.c"))
+        .opt_level(3)
+        .out_dir(&output_path)
+        .compile("extern");
 
     println!("cargo:rustc-link-search={}", output_path.to_str().unwrap());
     println!("cargo:rustc-link-lib=static=extern");

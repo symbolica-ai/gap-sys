@@ -9,7 +9,7 @@ use anyhow::Result;
 use std::ffi::{c_int, CStr, CString};
 use std::fmt;
 use std::ptr;
-use std::sync::{Arc, Mutex, Once};
+use std::sync::Once;
 
 pub struct Gap;
 

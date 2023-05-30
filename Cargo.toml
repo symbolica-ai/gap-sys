@@ -7,6 +7,7 @@ edition = "2021"
 
 [build-dependencies]
 bindgen = { version = "0.65.1", features = ["experimental"] }
+cc = "1.0.79"
 
 [dependencies]
 anyhow = "1.0.71"
