@@ -59,6 +59,8 @@ impl Gap {
                 let arg6 = CString::new("--nointeract").unwrap();
                 let arg7 = CString::new("-x").unwrap();
                 let arg8 = CString::new("4096").unwrap();
+                let arg9 = CString::new("-K").unwrap();
+                let arg10 = CString::new("1g").unwrap(); // Only allow 1GB of memory allocation
 
                 let mut c_args = vec![
                     arg1.into_raw(),
@@ -69,6 +71,8 @@ impl Gap {
                     arg6.into_raw(),
                     arg7.into_raw(),
                     arg8.into_raw(),
+                    arg9.into_raw(),
+                    arg10.into_raw(),
                     ptr::null_mut(),
                 ];
 
