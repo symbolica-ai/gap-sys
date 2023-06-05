@@ -36,13 +36,6 @@ impl fmt::Display for GapElement {
     }
 }
 
-impl From<GapElement> for usize {
-    fn from(val: GapElement) -> Self {
-        let string = val.to_string();
-        string.parse::<usize>().unwrap()
-    }
-}
-
 impl Gap {
     pub fn init() -> &'static Gap {
         // Use a static ONCE and OPTIONAL to hold the singleton
@@ -59,8 +52,6 @@ impl Gap {
                 let arg6 = CString::new("--nointeract").unwrap();
                 let arg7 = CString::new("-x").unwrap();
                 let arg8 = CString::new("4096").unwrap();
-                let arg9 = CString::new("-K").unwrap();
-                let arg10 = CString::new("1g").unwrap(); // Only allow 1GB of memory allocation
 
                 let mut c_args = vec![
                     arg1.into_raw(),
@@ -71,8 +62,6 @@ impl Gap {
                     arg6.into_raw(),
                     arg7.into_raw(),
                     arg8.into_raw(),
-                    arg9.into_raw(),
-                    arg10.into_raw(),
                     ptr::null_mut(),
                 ];
 
@@ -98,7 +87,12 @@ impl Gap {
         unsafe {
             SYSGAP_Enter();
 
-            let obj = GAP_EvalString(c_cmd.into_raw() as *const Char);
+            // Create a raw pointer to the CString, needs to be freed later
+            let raw_ptr = c_cmd.into_raw();
+            let obj = GAP_EvalString(raw_ptr as *const Char);
+            // Drop the CString so it doesn't leak
+            let _ = CString::from_raw(raw_ptr);
+
             let obj = GAP_ElmList(obj, 1);
             let success = GAP_ElmList(obj, 1);
 
@@ -133,7 +127,7 @@ mod tests {
         let gap = Gap::init();
         gap.eval("a:=DirectProduct(SymmetricGroup(7), SymmetricGroup(7));")
             .unwrap();
-        let order: usize = gap.eval("Order(a);").unwrap().into();
+        let order: usize = gap.eval("Order(a);").unwrap().to_string().parse().unwrap();
         assert_eq!(order, 25401600);
     }
 }
