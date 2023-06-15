@@ -36,6 +36,28 @@ impl fmt::Display for GapElement {
     }
 }
 
+impl fmt::Pointer for GapElement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:p}", self.obj)
+    }
+}
+
+unsafe fn hex_str_to_ptr(hex_str: &str) -> Result<Bag, std::num::ParseIntError> {
+    let without_prefix = hex_str.trim_start_matches("0x");
+    let addr = usize::from_str_radix(without_prefix, 16)?;
+    Ok(addr as Bag)
+}
+
+// Implement from string for GapElement
+// Convert the hex string into a *mut Bag
+impl From<&str> for GapElement {
+    fn from(s: &str) -> Self {
+        GapElement {
+            obj: unsafe { hex_str_to_ptr(s).unwrap() },
+        }
+    }
+}
+
 impl Gap {
     pub fn init() -> &'static Gap {
         // Use a static ONCE and OPTIONAL to hold the singleton
@@ -102,6 +124,17 @@ impl Gap {
             } else {
                 Err(anyhow::anyhow!("Error evaluating command"))
             }
+        }
+    }
+
+    pub fn get_list_element(&self, list: &GapElement, idx: usize) -> Result<GapElement> {
+        let _guard = GapGuard;
+
+        unsafe {
+            SYSGAP_Enter();
+
+            let obj = GAP_ElmList(list.obj, idx);
+            Ok(GapElement { obj })
         }
     }
 }
