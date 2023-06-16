@@ -198,7 +198,7 @@ impl Gap {
         unsafe {
             SYSGAP_Enter();
 
-            let obj = GAP_ElmList(list.obj, idx);
+            let obj = GAP_ElmList(list.obj, idx + 1);
             Ok(GapElement { obj })
         }
     }
