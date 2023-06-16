@@ -6,12 +6,25 @@
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 use anyhow::Result;
+use std::borrow::Cow;
 use std::ffi::{c_int, CStr, CString};
 use std::fmt;
 use std::ptr;
 use std::sync::Once;
 
-pub struct Gap;
+pub struct Gap {
+    print_fn: Obj,
+    output_stream: TypOutputFile,
+    output_str_obj: Obj,
+}
+
+impl Drop for Gap {
+    fn drop(&mut self) {
+        unsafe {
+            CloseOutput(&mut self.output_stream);
+        }
+    }
+}
 
 pub struct GapGuard;
 
@@ -53,51 +66,76 @@ unsafe fn hex_str_to_ptr(hex_str: &str) -> Result<Bag, std::num::ParseIntError> 
 impl From<&str> for GapElement {
     fn from(s: &str) -> Self {
         GapElement {
-            obj: unsafe { hex_str_to_ptr(s).unwrap() },
+            obj: unsafe { hex_str_to_ptr(s.trim()).unwrap() },
         }
     }
 }
 
 impl Gap {
-    pub fn init() -> &'static Gap {
-        // Use a static ONCE and OPTIONAL to hold the singleton
-        static mut OPTIONAL: Option<Gap> = None;
-        static ONCE: Once = Once::new();
+    pub fn init() -> Gap {
+        let arg1 = CString::new("gap").unwrap();
+        let arg2 = CString::new("-l").unwrap();
+        let arg3 = CString::new("/usr/local/gap/share/gap").unwrap();
+        let arg4 = CString::new("-q").unwrap();
+        let arg5 = CString::new("-E").unwrap();
+        let arg6 = CString::new("--nointeract").unwrap();
+        let arg7 = CString::new("-x").unwrap();
+        let arg8 = CString::new("4096").unwrap();
+
+        let mut c_args = vec![
+            arg1.into_raw(),
+            arg2.into_raw(),
+            arg3.into_raw(),
+            arg4.into_raw(),
+            arg5.into_raw(),
+            arg6.into_raw(),
+            arg7.into_raw(),
+            arg8.into_raw(),
+            ptr::null_mut(),
+        ];
 
         unsafe {
-            ONCE.call_once(|| {
-                let arg1 = CString::new("gap").unwrap();
-                let arg2 = CString::new("-l").unwrap();
-                let arg3 = CString::new("/usr/local/gap/share/gap").unwrap();
-                let arg4 = CString::new("-q").unwrap();
-                let arg5 = CString::new("-E").unwrap();
-                let arg6 = CString::new("--nointeract").unwrap();
-                let arg7 = CString::new("-x").unwrap();
-                let arg8 = CString::new("4096").unwrap();
+            GAP_Initialize(
+                c_args.len() as c_int - 1,
+                c_args.as_mut_ptr(),
+                None,
+                None,
+                1,
+            );
+        }
 
-                let mut c_args = vec![
-                    arg1.into_raw(),
-                    arg2.into_raw(),
-                    arg3.into_raw(),
-                    arg4.into_raw(),
-                    arg5.into_raw(),
-                    arg6.into_raw(),
-                    arg7.into_raw(),
-                    arg8.into_raw(),
-                    ptr::null_mut(),
-                ];
+        let _guard = GapGuard;
 
-                GAP_Initialize(
-                    c_args.len() as c_int - 1,
-                    c_args.as_mut_ptr(),
-                    None,
-                    None,
-                    1,
-                );
+        unsafe {
+            SYSGAP_Enter();
+        }
 
-                OPTIONAL = Some(Gap {});
-            });
-            OPTIONAL.as_ref().unwrap()
+        let output_text_str_operation = unsafe {
+            let raw_ptr = CString::new("OutputTextString").unwrap().into_raw();
+            let obj = ValGVar(GVarName(raw_ptr));
+            let _ = CString::from_raw(raw_ptr);
+            obj
+        };
+
+        let (mut output_stream, output_str_obj) = unsafe {
+            let output_str_obj = NEW_STRING(0);
+            let obj = DoOperation2Args(output_text_str_operation, output_str_obj, GAP_True);
+            let mut output: TypOutputFile = std::mem::zeroed();
+            assert_eq!(OpenOutputStream(&mut output, obj), 1);
+            (output, output_str_obj)
+        };
+
+        let print_fn = unsafe {
+            let raw_ptr = CString::new("Print").unwrap().into_raw();
+            let obj = GAP_ValueGlobalVariable(raw_ptr);
+            let _ = CString::from_raw(raw_ptr);
+            obj
+        };
+
+        Gap {
+            print_fn,
+            output_stream,
+            output_str_obj,
         }
     }
 
@@ -119,7 +157,7 @@ impl Gap {
             let success = GAP_ElmList(obj, 1);
 
             if success == GAP_True {
-                let obj = GAP_ElmList(obj, 5);
+                let obj = GAP_ElmList(obj, 2);
                 Ok(GapElement { obj })
             } else {
                 Err(anyhow::anyhow!("Error evaluating command"))
@@ -127,7 +165,34 @@ impl Gap {
         }
     }
 
-    pub fn get_list_element(&self, list: &GapElement, idx: usize) -> Result<GapElement> {
+    pub fn elem_string(&mut self, element: &GapElement) -> String {
+        let _guard = GapGuard;
+
+        unsafe {
+            SYSGAP_Enter();
+        }
+
+        unsafe {
+            GAP_CallFunc1Args(self.print_fn, element.obj);
+        }
+
+        // Flush
+        unsafe {
+            Pr(b"\x03".as_ptr() as *const Char, 0, 0);
+        }
+
+        let cstr = unsafe { CStr::from_ptr(GAP_CSTR_STRING(self.output_str_obj)) };
+
+        let copy = cstr.to_string_lossy().to_string();
+
+        unsafe {
+            SET_LEN_STRING(self.output_str_obj, 0);
+        }
+
+        copy
+    }
+
+    pub fn get_list_elem(&self, list: &GapElement, idx: usize) -> Result<GapElement> {
         let _guard = GapGuard;
 
         unsafe {
@@ -162,5 +227,25 @@ mod tests {
             .unwrap();
         let order: usize = gap.eval("Order(a);").unwrap().to_string().parse().unwrap();
         assert_eq!(order, 25401600);
+    }
+
+    #[ignore]
+    #[test]
+    fn test_nested_list() {
+        let mut gap = Gap::init();
+        let outer_list = gap.eval("[[1, 2, 3], [4, 5, 6]];;").unwrap();
+        let inner_list = gap.get_list_elem(&outer_list, 1).unwrap();
+        let element = gap.get_list_elem(&inner_list, 1).unwrap();
+        let string = gap.elem_string(&element);
+        assert_eq!(string, "1");
+    }
+
+    #[ignore]
+    #[test]
+    fn test_echo() {
+        let mut gap = Gap::init();
+        let hello = gap.eval("\"Hello, world!\";").unwrap();
+        let string = gap.elem_string(&hello);
+        println!("{}", string);
     }
 }
