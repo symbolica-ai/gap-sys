@@ -14,6 +14,7 @@ use std::sync::Once;
 
 pub struct Gap {
     print_fn: Obj,
+    input_stream: Obj,
     output_stream: TypOutputFile,
     output_str_obj: Obj,
     output_stream_handle: Obj,
@@ -133,8 +134,16 @@ impl Gap {
             obj
         };
 
+        let input_stream = unsafe {
+            let raw_ptr = CString::new("InputTextString").unwrap().into_raw();
+            let obj = GAP_ValueGlobalVariable(raw_ptr);
+            let _ = CString::from_raw(raw_ptr);
+            obj
+        };
+
         Gap {
             print_fn,
+            input_stream,
             output_stream,
             output_str_obj,
             output_stream_handle,
@@ -151,7 +160,8 @@ impl Gap {
 
             // Create a raw pointer to the CString, needs to be freed later
             let raw_ptr = c_cmd.into_raw();
-            let obj = GAP_EvalString(raw_ptr as *const Char);
+            let instream = DoOperation1Args(self.input_stream, MakeString(raw_ptr));
+            let obj = READ_ALL_COMMANDS(instream, GAP_False, GAP_False, GAP_False);
             // Drop the CString so it doesn't leak
             let _ = CString::from_raw(raw_ptr);
 
