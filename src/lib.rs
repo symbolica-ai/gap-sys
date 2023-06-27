@@ -16,6 +16,7 @@ pub struct Gap {
     print_fn: Obj,
     output_stream: TypOutputFile,
     output_str_obj: Obj,
+    output_stream_handle: Obj,
 }
 
 impl Drop for Gap {
@@ -117,16 +118,16 @@ impl Gap {
             obj
         };
 
-        let (mut output_stream, output_str_obj) = unsafe {
+        let (mut output_stream, output_str_obj, output_stream_handle) = unsafe {
             let output_str_obj = NEW_STRING(0);
-            let obj = DoOperation2Args(output_text_str_operation, output_str_obj, GAP_True);
+            let handle_obj = DoOperation2Args(output_text_str_operation, output_str_obj, GAP_True);
             let mut output: TypOutputFile = std::mem::zeroed();
-            assert_eq!(OpenOutputStream(&mut output, obj), 1);
-            (output, output_str_obj)
+            assert_eq!(OpenOutputStream(&mut output, handle_obj), 1);
+            (output, output_str_obj, handle_obj)
         };
 
         let print_fn = unsafe {
-            let raw_ptr = CString::new("Print").unwrap().into_raw();
+            let raw_ptr = CString::new("PrintTo").unwrap().into_raw();
             let obj = GAP_ValueGlobalVariable(raw_ptr);
             let _ = CString::from_raw(raw_ptr);
             obj
@@ -136,6 +137,7 @@ impl Gap {
             print_fn,
             output_stream,
             output_str_obj,
+            output_stream_handle,
         }
     }
 
@@ -173,16 +175,10 @@ impl Gap {
         }
 
         unsafe {
-            GAP_CallFunc1Args(self.print_fn, element.obj);
+            GAP_CallFunc2Args(self.print_fn, self.output_stream_handle, element.obj);
         }
 
-        // Flush
-        unsafe {
-            Pr(b"\x03".as_ptr() as *const Char, 0, 0);
-        }
-
-        let cstr = unsafe { CStr::from_ptr(GAP_CSTR_STRING(self.output_str_obj)) };
-
+        let cstr: &CStr = unsafe { CStr::from_ptr(GAP_CSTR_STRING(self.output_str_obj)) };
         let copy = cstr.to_string_lossy().to_string();
 
         unsafe {
@@ -214,18 +210,19 @@ mod tests {
     #[ignore]
     #[test]
     fn test_group() {
-        let gap = Gap::init();
+        let mut gap = Gap::init();
         let gap_element = gap.eval("Group((1,2,3),(1,2));").unwrap();
-        assert_eq!(gap_element.to_string(), "Group([ (1,2,3), (1,2) ])");
+        assert_eq!(gap.elem_string(&gap_element), "Group( [ (1,2,3), (1,2) ] )");
     }
 
     #[ignore]
     #[test]
     fn test_direct_product() {
-        let gap = Gap::init();
+        let mut gap = Gap::init();
         gap.eval("a:=DirectProduct(SymmetricGroup(7), SymmetricGroup(7));")
             .unwrap();
-        let order: usize = gap.eval("Order(a);").unwrap().to_string().parse().unwrap();
+        let obj = gap.eval("Order(a);").unwrap();
+        let order: usize = gap.elem_string(&obj).parse().unwrap();
         assert_eq!(order, 25401600);
     }
 
@@ -237,7 +234,7 @@ mod tests {
         let inner_list = gap.get_list_elem(&outer_list, 1).unwrap();
         let element = gap.get_list_elem(&inner_list, 1).unwrap();
         let string = gap.elem_string(&element);
-        assert_eq!(string, "1");
+        assert_eq!(string, "5");
     }
 
     #[ignore]
