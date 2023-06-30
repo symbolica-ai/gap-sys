@@ -6,8 +6,8 @@
 #include <gap/gap_all.h>
 
 // Wrapper around macros
-static inline void SYSGAP_Enter() {
-    GAP_Enter();
+static inline int SYSGAP_Enter() {
+    return GAP_Enter();
 }
 
 static inline void SYSGAP_Leave() {

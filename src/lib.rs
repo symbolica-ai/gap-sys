@@ -6,11 +6,9 @@
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 use anyhow::Result;
-use std::borrow::Cow;
 use std::ffi::{c_int, CStr, CString};
 use std::fmt;
 use std::ptr;
-use std::sync::Once;
 
 pub struct Gap {
     print_fn: Obj,
@@ -28,18 +26,9 @@ impl Drop for Gap {
     }
 }
 
-pub struct GapGuard;
-
-impl Drop for GapGuard {
-    fn drop(&mut self) {
-        unsafe {
-            SYSGAP_Leave();
-        }
-    }
-}
-
+#[derive(Clone)]
 pub struct GapElement {
-    obj: Obj,
+    pub obj: Obj,
 }
 
 impl fmt::Display for GapElement {
@@ -97,19 +86,15 @@ impl Gap {
         ];
 
         unsafe {
+            OBJ_REFS = Box::into_raw(Box::default());
+
             GAP_Initialize(
                 c_args.len() as c_int - 1,
                 c_args.as_mut_ptr(),
-                None,
+                Some(mark_bag),
                 None,
                 1,
             );
-        }
-
-        let _guard = GapGuard;
-
-        unsafe {
-            SYSGAP_Enter();
         }
 
         let output_text_str_operation = unsafe {
@@ -119,7 +104,7 @@ impl Gap {
             obj
         };
 
-        let (mut output_stream, output_str_obj, output_stream_handle) = unsafe {
+        let (output_stream, output_str_obj, output_stream_handle) = unsafe {
             let output_str_obj = NEW_STRING(0);
             let handle_obj = DoOperation2Args(output_text_str_operation, output_str_obj, GAP_True);
             let mut output: TypOutputFile = std::mem::zeroed();
@@ -153,11 +138,7 @@ impl Gap {
     pub fn eval(&self, cmd: &str) -> Result<GapElement> {
         let c_cmd = CString::new(cmd).unwrap();
 
-        let _guard = GapGuard;
-
         unsafe {
-            SYSGAP_Enter();
-
             // Create a raw pointer to the CString, needs to be freed later
             let raw_ptr = c_cmd.into_raw();
             let instream = DoOperation1Args(self.input_stream, MakeString(raw_ptr));
@@ -178,12 +159,6 @@ impl Gap {
     }
 
     pub fn elem_string(&mut self, element: &GapElement) -> String {
-        let _guard = GapGuard;
-
-        unsafe {
-            SYSGAP_Enter();
-        }
-
         unsafe {
             GAP_CallFunc2Args(self.print_fn, self.output_stream_handle, element.obj);
         }
@@ -199,14 +174,32 @@ impl Gap {
     }
 
     pub fn get_list_elem(&self, list: &GapElement, idx: usize) -> Result<GapElement> {
-        let _guard = GapGuard;
-
         unsafe {
-            SYSGAP_Enter();
-
             let obj = GAP_ElmList(list.obj, idx + 1);
             Ok(GapElement { obj })
         }
+    }
+
+    pub fn free(&self, obj: &GapElement) {
+        unsafe {
+            OBJ_REFS.as_mut().unwrap().retain(|x| x.obj != obj.obj);
+        }
+    }
+
+    pub fn alloc(&self, obj: &GapElement) {
+        unsafe {
+            OBJ_REFS.as_mut().unwrap().push(obj.to_owned());
+        }
+    }
+}
+
+// Garbage collector interface
+
+static mut OBJ_REFS: *mut Vec<GapElement> = ptr::null_mut();
+
+unsafe extern "C" fn mark_bag() {
+    for o in &*OBJ_REFS {
+        GAP_MarkBag(o.obj);
     }
 }
 
@@ -253,6 +246,6 @@ mod tests {
         let mut gap = Gap::init();
         let hello = gap.eval("\"Hello, world!\";").unwrap();
         let string = gap.elem_string(&hello);
-        println!("{}", string);
+        assert_eq!(string, "Hello, world!");
     }
 }
